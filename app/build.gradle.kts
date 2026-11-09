@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+    id("jacoco")
 }
 
 val projectRootHash: String = MessageDigest.getInstance("SHA-1")
@@ -57,6 +58,7 @@ android {
         getByName("debug") {
             signingConfig = signingConfigs.getByName("release")
             isDebuggable = true
+            enableUnitTestCoverage = true
         }
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
@@ -140,4 +142,18 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+tasks.register<JacocoReport>("createDebugCoverageReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+    val debugTree = fileTree("${layout.buildDirectory.get()}/tmp/kotlin-classes/debug")
+    sourceDirectories.setFrom(files("$projectDir/src/main/kotlin"))
+    classDirectories.setFrom(debugTree)
+    executionData.setFrom(fileTree(layout.buildDirectory.get()) {
+        include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+    })
 }

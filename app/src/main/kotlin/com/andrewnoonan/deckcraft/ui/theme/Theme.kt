@@ -106,7 +106,7 @@ fun DeckCraftTheme(
             val captionColor = colorScheme.surfaceContainer.toArgb() or 0xFF000000.toInt()
             val navColor = colorScheme.surfaceContainer.toArgb() or 0xFF000000.toInt()
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val taskDesc = ActivityManager.TaskDescription.Builder()
                     .setPrimaryColor(captionColor)
                     .build()

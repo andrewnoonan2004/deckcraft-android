@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.DeckCraft" parent="android:Theme.Material.NoActionBar">
+        <!-- Desktop / Android Laptop window titlebar matches the Material 3 Expressive theme -->
+        <item name="android:colorPrimary">@color/deckcraft_primary_dark</item>
+        <item name="android:colorPrimaryDark">@color/deckcraft_surface_container_dark</item>
+        <item name="android:statusBarColor">@color/deckcraft_surface_container_dark</item>
+        <item name="android:navigationBarColor">@color/deckcraft_surface_container_dark</item>
+        <item name="android:windowBackground">@color/deckcraft_surface_dark</item>
+    </style>
+</resources>

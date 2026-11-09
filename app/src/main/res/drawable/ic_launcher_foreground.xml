@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+    <!-- DeckCraft Presentation Easel Emblem adapted from ai.storyteller.deckcraft.svg -->
+    <!-- Easel vertical post and base -->
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M248,318h16v74h-16z" />
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M196,386h120v14h-120z" />
+    <!-- Presentation slide board (#EFE9DC) with crisp dark frame (#0B0B0C) -->
+    <path
+        android:fillColor="#EFE9DC"
+        android:strokeColor="#0B0B0C"
+        android:strokeWidth="12"
+        android:strokeLineJoin="round"
+        android:pathData="M128,132h256c8,0 14,6 14,14v160c0,8 -6,14 -14,14H128c-8,0 -14,-6 -14,-14V146c0,-8 6,-14 14,-14z" />
+    <!-- Slide header bar -->
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M156,162h130v16h-130z" />
+    <!-- Ascending presentation chart bars -->
+    <path
+        android:fillColor="#F26B1D"
+        android:pathData="M162,240h36v54h-36z" />
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M214,210h36v84h-36z" />
+    <path
+        android:fillColor="#F26B1D"
+        android:pathData="M266,184h36v110h-36z" />
+    <!-- Circular presentation badge -->
+    <path
+        android:fillColor="#0B0B0C"
+        android:pathData="M342,196m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+</vector>

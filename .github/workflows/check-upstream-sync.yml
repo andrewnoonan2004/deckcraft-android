@@ -1,0 +1,147 @@
+name: Check & Sync Upstream Changes
+
+on:
+  schedule:
+    # Run weekly on Monday at 02:00 UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:
+    inputs:
+      target_ref:
+        description: 'Upstream branch or tag to sync (e.g. main, v0.19.0)'
+        required: false
+        default: 'main'
+        type: string
+      create_pr:
+        description: 'Create a Pull Request if upstream changes are found'
+        required: false
+        default: true
+        type: boolean
+      run_tests:
+        description: 'Run Android unit test suite to verify compatibility'
+        required: false
+        default: true
+        type: boolean
+      build_rust_from_source:
+        description: 'Compile Rust native bridge to verify C/JNI ABI compatibility (slower)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: upstream-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-and-sync:
+    name: Check & Incorporate Upstream
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Git User
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check for Upstream Changes
+        id: check_upstream
+        run: |
+          chmod +x scripts/sync-upstream.sh
+          bash scripts/sync-upstream.sh --check --ref "${{ github.event.inputs.target_ref || 'main' }}"
+
+      # If changes exist, incorporate upstream source into deckcraft/
+      - name: Incorporate Upstream Changes
+        if: steps.check_upstream.outputs.has_changes == 'true'
+        id: sync_upstream
+        run: |
+          bash scripts/sync-upstream.sh --sync --ref "${{ github.event.inputs.target_ref || 'main' }}"
+
+      # Optional: Compile native Rust bridge from source if requested
+      - name: Set up Rust Toolchain
+        if: steps.check_upstream.outputs.has_changes == 'true' && github.event.inputs.build_rust_from_source == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: Install Android NDK
+        if: steps.check_upstream.outputs.has_changes == 'true' && github.event.inputs.build_rust_from_source == 'true'
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r29
+
+      - name: Rebuild Rust Native Bridge
+        if: steps.check_upstream.outputs.has_changes == 'true' && github.event.inputs.build_rust_from_source == 'true'
+        run: |
+          chmod +x scripts/build-android-rust.sh
+          bash scripts/build-android-rust.sh
+
+      # Setup Java & Android SDK to run tests
+      - name: Set up JDK 17
+        if: steps.check_upstream.outputs.has_changes == 'true' && (github.event.inputs.run_tests != 'false')
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Set up Android SDK
+        if: steps.check_upstream.outputs.has_changes == 'true' && (github.event.inputs.run_tests != 'false')
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle
+        if: steps.check_upstream.outputs.has_changes == 'true' && (github.event.inputs.run_tests != 'false')
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Verify Android Compatibility (Unit & UI Tests)
+        if: steps.check_upstream.outputs.has_changes == 'true' && (github.event.inputs.run_tests != 'false')
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --no-daemon
+
+      # Create automated Pull Request with changes
+      - name: Create Pull Request for Upstream Changes
+        if: steps.check_upstream.outputs.has_changes == 'true' && (github.event.inputs.create_pr != 'false')
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(upstream): sync from storytold/deckcraft@${{ steps.sync_upstream.outputs.latest_sha_short }}"
+          branch: "upstream-sync/${{ steps.sync_upstream.outputs.latest_tag || 'latest' }}"
+          delete-branch: true
+          title: "chore(upstream): sync changes from storytold/deckcraft (${{ steps.sync_upstream.outputs.latest_tag }} - ${{ steps.sync_upstream.outputs.latest_sha_short }})"
+          body: |
+            ## Automated Upstream Sync from [storytold/deckcraft](https://github.com/storytold/deckcraft)
+
+            This pull request incorporates the latest upstream changes into `deckcraft/`:
+
+            - **Upstream Target**: `${{ steps.sync_upstream.outputs.target_ref }}`
+            - **Upstream Tag**: `${{ steps.sync_upstream.outputs.latest_tag }}` (previously `${{ steps.sync_upstream.outputs.current_tag }}`)
+            - **Upstream Commit**: [`${{ steps.sync_upstream.outputs.latest_sha_short }}`](https://github.com/storytold/deckcraft/commit/${{ steps.sync_upstream.outputs.latest_sha }})
+            - **Validation**: Android unit tests executed and passed.
+
+            ### Recent Upstream Commits
+            ```text
+            ${{ steps.sync_upstream.outputs.commit_summary }}
+            ```
+
+            *Generated automatically by [Check & Sync Upstream Changes](.github/workflows/check-upstream-sync.yml).*
+          labels: |
+            upstream-sync
+            automated-pr
+
+      # Summary for GitHub Actions run view
+      - name: Publish Step Summary
+        run: |
+          echo "## Upstream Sync Status" >> $GITHUB_STEP_SUMMARY
+          echo "- **Upstream Repo**: \`https://github.com/storytold/deckcraft\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target Ref**: \`${{ steps.check_upstream.outputs.target_ref || 'main' }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Tracked Tag**: \`${{ steps.check_upstream.outputs.current_tag }}\` (\`${{ steps.check_upstream.outputs.current_sha }}\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest Upstream Tag**: \`${{ steps.check_upstream.outputs.latest_tag }}\` (\`${{ steps.check_upstream.outputs.latest_sha }}\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Changes Detected**: \`${{ steps.check_upstream.outputs.has_changes }}\`" >> $GITHUB_STEP_SUMMARY

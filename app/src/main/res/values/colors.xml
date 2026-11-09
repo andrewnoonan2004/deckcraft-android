@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Expressive Dark Colors (DeckCraft default) -->
+    <color name="deckcraft_primary_dark">#FFB590</color>
+    <color name="deckcraft_primary_container_dark">#A33900</color>
+    <color name="deckcraft_surface_dark">#141312</color>
+    <color name="deckcraft_surface_container_dark">#211F1D</color>
+
+    <!-- Expressive Light Colors -->
+    <color name="deckcraft_primary_light">#D95A1A</color>
+    <color name="deckcraft_primary_container_light">#FFDBCA</color>
+    <color name="deckcraft_surface_light">#FAF8F6</color>
+    <color name="deckcraft_surface_container_light">#F0ECE8</color>
+</resources>

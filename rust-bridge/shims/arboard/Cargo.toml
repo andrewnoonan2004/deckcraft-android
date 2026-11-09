@@ -1,0 +1,15 @@
+[package]
+name = "arboard"
+version = "3.7.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Android bridge shim for arboard clipboard integration in DeckCraft"
+
+[features]
+default = []
+image-data = []
+wayland-data-control = []
+core-graphics = []
+windows-sys = []
+wl-clipboard-rs = []
+x11rb = []

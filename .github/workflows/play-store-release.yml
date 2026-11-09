@@ -1,0 +1,171 @@
+name: Google Play Store Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Google Play Release Track'
+        required: true
+        default: 'internal'
+        type: choice
+        options:
+          - internal
+          - alpha
+          - beta
+          - production
+      draft:
+        description: 'Create release as Draft'
+        required: false
+        default: false
+        type: boolean
+      build_rust_from_source:
+        description: 'Compile Rust native engine from source (slower)'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: play-store-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-publish:
+    name: Build & Publish Release Bundle (AAB)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      # Optional: Compile native Rust bridge from source if requested
+      - name: Set up Rust Toolchain
+        if: ${{ github.event.inputs.build_rust_from_source == 'true' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - name: Install Android NDK
+        if: ${{ github.event.inputs.build_rust_from_source == 'true' }}
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r29
+
+      - name: Build Rust Native Libraries (libdeckcraft_android.so)
+        if: ${{ github.event.inputs.build_rust_from_source == 'true' }}
+        run: |
+          chmod +x scripts/build-android-rust.sh
+          bash scripts/build-android-rust.sh
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Restore Keystore from GitHub Secret if provided; fallback to committed keystore
+      - name: Prepare Signing Keystore
+        run: |
+          mkdir -p app/keystore
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Using upload keystore from KEYSTORE_BASE64 secret..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > app/keystore/deckcraft.jks
+          else
+            echo "Using default repository keystore..."
+          fi
+
+      - name: Build Signed App Bundle (AAB) & Release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'deckcraft_store_2026' }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'deckcraft' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'deckcraft_store_2026' }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease assembleRelease --no-daemon
+
+      - name: Verify Signed App Bundle (.aab) & Release APK (.apk)
+        run: |
+          AAB_FILE="app/build/outputs/bundle/release/DeckCraft-release.aab"
+          APK_FILE="app/build/outputs/apk/release/DeckCraft-release.apk"
+          if [ ! -f "$AAB_FILE" ]; then
+            echo "ERROR: $AAB_FILE does not exist!"
+            exit 1
+          fi
+          if [ ! -f "$APK_FILE" ]; then
+            echo "ERROR: $APK_FILE does not exist!"
+            exit 1
+          fi
+          echo "Release Bundle (AAB):"
+          ls -lh "$AAB_FILE"
+          jarsigner -verify -verbose -certs "$AAB_FILE" | grep -E "jar verified|signed" | head -n 5
+
+          echo "Release APK (non-debug):"
+          ls -lh "$APK_FILE"
+          jarsigner -verify -verbose -certs "$APK_FILE" | grep -E "jar verified|signed" | head -n 5
+
+          cd app/build/outputs/apk/release
+          sha256sum DeckCraft-release.apk > DeckCraft-release.apk.sha256
+
+      - name: Upload App Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-release-aab
+          path: app/build/outputs/bundle/release/DeckCraft-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeckCraft-release-apk
+          path: |
+            app/build/outputs/apk/release/DeckCraft-release.apk
+            app/build/outputs/apk/release/DeckCraft-release.apk.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      # Attach both AAB and non-debug APK to GitHub Release when triggered by tag
+      - name: Attach Assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/build/outputs/bundle/release/DeckCraft-release.aab
+            app/build/outputs/apk/release/DeckCraft-release.apk
+            app/build/outputs/apk/release/DeckCraft-release.apk.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish directly to Google Play via Play Developer API
+      - name: Check Play Store Service Account Secret
+        id: check-secret
+        run: |
+          if [ -n "${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}" ]; then
+            echo "has_secret=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_secret=false" >> $GITHUB_OUTPUT
+            echo "::notice ::PLAY_SERVICE_ACCOUNT_JSON secret is not set. Skipping automated upload to Google Play. You can download the generated AAB artifact and upload it manually to the Google Play Console."
+          fi
+
+      - name: Publish to Google Play Store
+        if: steps.check-secret.outputs.has_secret == 'true'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.andrewnoonan.deckcraft
+          releaseFiles: app/build/outputs/bundle/release/DeckCraft-release.aab
+          track: ${{ github.event.inputs.track || 'internal' }}
+          status: ${{ github.event.inputs.draft == 'true' && 'draft' || 'completed' }}

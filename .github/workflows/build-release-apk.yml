@@ -81,9 +81,9 @@ jobs:
 
       - name: Build Signed Release APK
         env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'deckcraft_store_2026' }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD || 'deckcraft_android_keystore_2026' }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS || 'deckcraft' }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'deckcraft_store_2026' }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD || 'deckcraft_android_keystore_2026' }}
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon

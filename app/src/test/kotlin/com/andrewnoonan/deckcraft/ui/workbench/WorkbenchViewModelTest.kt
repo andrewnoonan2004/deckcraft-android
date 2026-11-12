@@ -4,6 +4,7 @@ import com.andrewnoonan.deckcraft.bridge.PickerRequestDto
 import com.andrewnoonan.deckcraft.bridge.PlatformEffectsDto
 import com.andrewnoonan.deckcraft.bridge.PrintJobRequestDto
 import com.andrewnoonan.deckcraft.bridge.SavedFileEventDto
+import com.andrewnoonan.deckcraft.input.EguiKeys
 import com.andrewnoonan.deckcraft.platform.ClipboardBridge
 import com.andrewnoonan.deckcraft.platform.PreferencesStore
 import com.andrewnoonan.deckcraft.platform.PrintBridge
@@ -165,5 +166,25 @@ class WorkbenchViewModelTest {
         assertEquals("""{"theme":"Light"}""", prefs.engine)
         assertEquals("destroyEngine(7)", bridge.calls.last())
         assertEquals(0L, vm.engineHandle)
+    }
+
+    @Test
+    fun fullscreenAndSlideshowState_updatesFromEffectsAndSendEscapeSendsKeyPressRelease() {
+        assertFalse(vm.uiState.value.isFullscreen)
+        assertFalse(vm.uiState.value.inSlideshow)
+
+        vm.onFrameEffects(PlatformEffectsDto(fullscreen = true, inSlideshow = true))
+        assertTrue(vm.uiState.value.isFullscreen)
+        assertTrue(vm.uiState.value.inSlideshow)
+
+        vm.sendEscapeKey()
+        assertEquals(
+            listOf("key(${EguiKeys.ESCAPE},true,mods=0)", "key(${EguiKeys.ESCAPE},false,mods=0)"),
+            bridge.calls.takeLast(2),
+        )
+
+        vm.onFrameEffects(PlatformEffectsDto(fullscreen = false, inSlideshow = false))
+        assertFalse(vm.uiState.value.isFullscreen)
+        assertFalse(vm.uiState.value.inSlideshow)
     }
 }

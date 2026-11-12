@@ -1,3 +1,4 @@
+use crate::widgets;
 use super::galleries::{Fl, kurbo_flatten, shapes_gallery};
 use super::home::layout_menu;
 use super::view::zoom_menu;
@@ -36,7 +37,7 @@ pub(super) fn insert(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "slide.new", json!({}));
         }
         if let Some(a) = arrow {
-            egui::Popup::menu(&a).width(420.0).show(|ui| layout_menu(app, ui, "slide.new"));
+            egui::Popup::menu(&a).width(widgets::popup_max_width(ui.ctx(), 420.0)).show(|ui| layout_menu(app, ui, "slide.new"));
         }
     });
     group(ui, |ui| {
@@ -71,38 +72,50 @@ pub(super) fn insert(app: &mut SlideApp, ui: &mut Ui) {
             }
         });
         let r = big_button(ui, Icon::Icons, "Icons", enabled(app, "insert.icon"));
-        egui::Popup::menu(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).width(340.0).show(|ui| icon_library(app, ui));
+        egui::Popup::menu(&r)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .width(widgets::popup_max_width(ui.ctx(), 340.0))
+            .show(|ui| icon_library(app, ui));
         big(app, ui, Icon::SmartArt, "SmartArt", "app.dialog", json!({"id": "smartart"}));
         let r = big_button(ui, Icon::Chart, "Chart", enabled(app, "insert.chart"));
         egui::Popup::menu(&r).show(|ui| {
-            for k in chart_menu_types() {
-                if k.is_none() {
-                    ui.separator();
+            let max_h = widgets::popup_max_height(ui.ctx(), 420.0);
+            egui::ScrollArea::vertical().max_height(max_h).show(ui, |ui| {
+                for k in chart_menu_types() {
+                    if k.is_none() {
+                        ui.separator();
+                    }
+                    if let Some(k) = k
+                        && ui.button(k.label()).clicked()
+                    {
+                        run(app, "insert.chart", json!({"type": format!("{k:?}")}));
+                    }
                 }
-                if let Some(k) = k
-                    && ui.button(k.label()).clicked()
-                {
-                    run(app, "insert.chart", json!({"type": format!("{k:?}")}));
-                }
-            }
+            });
         });
     });
     group(ui, |ui| {
         let r = big_button(ui, Icon::Zoom, "Zoom", enabled(app, "insert.zoom"));
-        egui::Popup::menu(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).width(300.0).show(|ui| zoom_menu(app, ui));
+        egui::Popup::menu(&r)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .width(widgets::popup_max_width(ui.ctx(), 300.0))
+            .show(|ui| zoom_menu(app, ui));
         big(app, ui, Icon::Link, "Link", "app.dialog", json!({"id": "hyperlink"}));
         let r = big_button(ui, Icon::Action, "Action", enabled(app, "insert.actionButton"));
         egui::Popup::menu(&r).show(|ui| {
-            for k in ["back", "forward", "beginning", "end", "home", "information", "return", "movie", "document", "sound", "help", "custom"] {
-                if ui.button(format!("Action Button: {k}")).clicked() {
-                    run(app, "insert.actionButton", json!({"kind": k}));
+            let max_h = widgets::popup_max_height(ui.ctx(), 380.0);
+            egui::ScrollArea::vertical().max_height(max_h).show(ui, |ui| {
+                for k in ["back", "forward", "beginning", "end", "home", "information", "return", "movie", "document", "sound", "help", "custom"] {
+                    if ui.button(format!("Action Button: {k}")).clicked() {
+                        run(app, "insert.actionButton", json!({"kind": k}));
+                    }
                 }
-            }
-            ui.separator();
-            let has_sel = app.session.active().is_some_and(|s| !s.selection.shapes.is_empty());
-            if ui.add_enabled(has_sel, egui::Button::new("Action Settings…")).clicked() {
-                app.dialog = Some(crate::dialogs::Dialog::new("action"));
-            }
+                ui.separator();
+                let has_sel = app.session.active().is_some_and(|s| !s.selection.shapes.is_empty());
+                if ui.add_enabled(has_sel, egui::Button::new("Action Settings…")).clicked() {
+                    app.dialog = Some(crate::dialogs::Dialog::new("action"));
+                }
+            });
         });
     });
     group(ui, |ui| {
@@ -113,11 +126,14 @@ pub(super) fn insert(app: &mut SlideApp, ui: &mut Ui) {
         big(app, ui, Icon::HeaderFooter, "Header &\nFooter", "app.dialog", json!({"id": "headerFooter"}));
         let r = big_button(ui, Icon::WordArt, "WordArt", enabled(app, "insert.wordArt"));
         egui::Popup::menu(&r).show(|ui| {
-            for i in 0..6 {
-                if ui.button(format!("WordArt style {}", i + 1)).clicked() {
-                    run(app, "insert.wordArt", json!({"style": i}));
+            let max_h = widgets::popup_max_height(ui.ctx(), 300.0);
+            egui::ScrollArea::vertical().max_height(max_h).show(ui, |ui| {
+                for i in 0..6 {
+                    if ui.button(format!("WordArt style {}", i + 1)).clicked() {
+                        run(app, "insert.wordArt", json!({"style": i}));
+                    }
                 }
-            }
+            });
         });
         big(app, ui, Icon::DateTime, "Date &\nTime", "insert.dateTime", json!({}));
         big(app, ui, Icon::SlideNumber, "Slide\nNumber", "insert.slideNumber", json!({}));
@@ -141,7 +157,10 @@ pub fn table_grid_picker(ui: &mut Ui) -> Option<(usize, usize)> {
     let label = if hover.0 > 0 { format!("{}x{} Table", hover.1, hover.0) } else { "Insert Table".into() };
     ui.label(label);
     let (rect, resp) = ui.allocate_exact_size(vec2(10.0 * (cell + 2.0), 8.0 * (cell + 2.0)), Sense::click());
-    if let Some(p) = resp.hover_pos() {
+    if let Some(p) = resp
+        .hover_pos()
+        .or_else(|| (resp.clicked() || resp.is_pointer_button_down_on()).then(|| resp.interact_pointer_pos()).flatten())
+    {
         let c = ((p.x - rect.min.x) / (cell + 2.0)).floor() as usize + 1;
         let r = ((p.y - rect.min.y) / (cell + 2.0)).floor() as usize + 1;
         hover = (r.min(8), c.min(10));
@@ -205,7 +224,8 @@ fn icon_library(app: &mut SlideApp, ui: &mut Ui) {
     let q = query.trim().to_lowercase();
     ui.data_mut(|d| d.insert_temp(id, query));
     let icons = deckcraft_engine::icons::icons();
-    egui::ScrollArea::vertical().id_salt("icon-scroll").max_height(420.0).show(ui, |ui| {
+    let max_h = widgets::popup_max_height(ui.ctx(), 420.0);
+    egui::ScrollArea::vertical().id_salt("icon-scroll").max_height(max_h).show(ui, |ui| {
         if q.is_empty() {
             render_icon_categories(app, ui, icons, color, hover);
         } else {

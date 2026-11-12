@@ -39,7 +39,7 @@ pub(super) fn transitions(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "transition.set", json!({"kind": x.0}));
         }
         let more = widgets::drop_button(ui, "", vec2(14.0, 52.0), true);
-        egui::Popup::menu(&more).width(480.0).show(|ui| {
+        egui::Popup::menu(&more).width(widgets::popup_max_width(ui.ctx(), 480.0)).show(|ui| {
             for cat in ["Subtle", "Exciting", "Dynamic Content"] {
                 ui.label(egui::RichText::new(cat).font(theme::bold(12.0)));
                 ui.horizontal_wrapped(|ui| {
@@ -98,7 +98,7 @@ pub(super) fn transitions(app: &mut SlideApp, ui: &mut Ui) {
                         }
                     }
                     ui.separator();
-                    let can_pick = app.services.pick_open.is_some();
+                    let can_pick = app.can_pick_open();
                     let r = ui.add_enabled(can_pick, egui::Button::new("Other Sound…"));
                     if r.clicked() {
                         app.pick_transition_sound();

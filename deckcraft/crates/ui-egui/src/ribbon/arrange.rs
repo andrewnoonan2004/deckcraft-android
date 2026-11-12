@@ -3,33 +3,36 @@ use super::{
 };
 
 pub fn arrange_menu(app: &mut SlideApp, ui: &mut Ui) {
-    ui.label(egui::RichText::new("Order Objects").font(theme::bold(12.0)));
-    for (l, id, ic) in [
-        ("Bring to Front", "arrange.bringToFront", Icon::BringToFront),
-        ("Send to Back", "arrange.sendToBack", Icon::SendToBack),
-        ("Bring Forward", "arrange.bringForward", Icon::BringForward),
-        ("Send Backward", "arrange.sendBackward", Icon::SendBackward),
-    ] {
-        menu_item(app, ui, ic, l, id, json!({}));
-    }
-    ui.separator();
-    ui.label(egui::RichText::new("Group Objects").font(theme::bold(12.0)));
-    menu_item(app, ui, Icon::Group, "Group", "arrange.group", json!({}));
-    menu_item(app, ui, Icon::Ungroup, "Ungroup", "arrange.ungroup", json!({}));
-    menu_item(app, ui, Icon::Group, "Regroup", "arrange.regroup", json!({}));
-    ui.separator();
-    ui.label(egui::RichText::new("Position Objects").font(theme::bold(12.0)));
-    ui.menu_button("Align", |ui| align_menu(app, ui));
-    ui.menu_button("Rotate", |ui| {
-        menu_item(app, ui, Icon::RotateRight, "Rotate Right 90°", "arrange.rotateRight", json!({}));
-        menu_item(app, ui, Icon::RotateLeft, "Rotate Left 90°", "arrange.rotateLeft", json!({}));
-        menu_item(app, ui, Icon::FlipV, "Flip Vertical", "arrange.flipVertical", json!({}));
-        menu_item(app, ui, Icon::FlipH, "Flip Horizontal", "arrange.flipHorizontal", json!({}));
+    let max_h = widgets::popup_max_height(ui.ctx(), 420.0);
+    egui::ScrollArea::vertical().max_height(max_h).show(ui, |ui| {
+        ui.label(egui::RichText::new("Order Objects").font(theme::bold(12.0)));
+        for (l, id, ic) in [
+            ("Bring to Front", "arrange.bringToFront", Icon::BringToFront),
+            ("Send to Back", "arrange.sendToBack", Icon::SendToBack),
+            ("Bring Forward", "arrange.bringForward", Icon::BringForward),
+            ("Send Backward", "arrange.sendBackward", Icon::SendBackward),
+        ] {
+            menu_item(app, ui, ic, l, id, json!({}));
+        }
+        ui.separator();
+        ui.label(egui::RichText::new("Group Objects").font(theme::bold(12.0)));
+        menu_item(app, ui, Icon::Group, "Group", "arrange.group", json!({}));
+        menu_item(app, ui, Icon::Ungroup, "Ungroup", "arrange.ungroup", json!({}));
+        menu_item(app, ui, Icon::Group, "Regroup", "arrange.regroup", json!({}));
+        ui.separator();
+        ui.label(egui::RichText::new("Position Objects").font(theme::bold(12.0)));
+        ui.menu_button("Align", |ui| align_menu(app, ui));
+        ui.menu_button("Rotate", |ui| {
+            menu_item(app, ui, Icon::RotateRight, "Rotate Right 90°", "arrange.rotateRight", json!({}));
+            menu_item(app, ui, Icon::RotateLeft, "Rotate Left 90°", "arrange.rotateLeft", json!({}));
+            menu_item(app, ui, Icon::FlipV, "Flip Vertical", "arrange.flipVertical", json!({}));
+            menu_item(app, ui, Icon::FlipH, "Flip Horizontal", "arrange.flipHorizontal", json!({}));
+        });
+        if ui.button("Selection Pane…").clicked() {
+            let _ = app.run("view.pane", json!({"pane": "selection"}));
+            ui.close();
+        }
     });
-    if ui.button("Selection Pane…").clicked() {
-        let _ = app.run("view.pane", json!({"pane": "selection"}));
-        ui.close();
-    }
 }
 
 pub fn align_menu(app: &mut SlideApp, ui: &mut Ui) {

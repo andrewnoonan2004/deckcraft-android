@@ -19,9 +19,50 @@ fn album_item_label(v: &Value) -> String {
     }
 }
 
-fn pick_album_picture(app: &mut SlideApp) -> Option<Value> {
+fn append_item_to_dialog(d: &mut Dialog, item: Value) -> Result<(), &'static str> {
+    match album_items(d) {
+        Some(mut list) if list.len() < 48 => {
+            list.push(item);
+            let next = list.len().saturating_sub(1);
+            store_album_items(d, &list);
+            d.fields.insert("sel".into(), next.to_string());
+            Ok(())
+        }
+        Some(_) => Err("A photo album holds at most 48 pictures or text boxes"),
+        None => Err("The picture list is invalid"),
+    }
+}
+
+/// Complete an asynchronous `open_async` picture pick for the open Photo Album dialog.
+pub(crate) fn append_async_picture(app: &mut SlideApp, name: &str, bytes: &[u8]) {
+    if !deckcraft_engine::cmd::insert::content_type(name, bytes).starts_with("image/") {
+        app.set_status(format!("{name}: DeckCraft can't use this kind of file as a picture"));
+        return;
+    }
+    if bytes.is_empty() {
+        app.set_status("That file is empty");
+        return;
+    }
+    if bytes.len() > 32 * 1024 * 1024 {
+        app.set_status("That picture is larger than 32 MB");
+        return;
+    }
+    let item = json!({"name": name, "data": deckcraft_engine::cmd::base64_encode(bytes)});
+    let Some(d) = app.dialog.as_mut().filter(|d| d.id == "photoAlbum") else {
+        app.set_status("Photo Album is no longer open");
+        return;
+    };
+    if let Err(msg) = append_item_to_dialog(d, item) {
+        app.set_status(msg);
+    }
+}
+
+pub(crate) fn pick_album_picture(app: &mut SlideApp) -> Option<Value> {
     let path = if let Some(pick) = app.services.pick_open.as_mut() {
         pick("picture")
+    } else if app.services.open_async.is_some() {
+        let _ = app.begin_async_pick("picture", crate::state::PendingAction::PhotoAlbumPicture);
+        return None;
     } else {
         app.set_status("Pass pictures to insert.photoAlbum");
         None
@@ -172,17 +213,9 @@ pub(super) fn photo_album_dialog(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog
         ui.horizontal(|ui| {
             if ui.button("Add Pictures…").clicked()
                 && let Some(item) = pick_album_picture(app)
+                && let Err(msg) = append_item_to_dialog(d, item)
             {
-                match album_items(d) {
-                    Some(mut list) if list.len() < 48 => {
-                        list.push(item);
-                        let next = list.len().saturating_sub(1);
-                        store_album_items(d, &list);
-                        d.fields.insert("sel".into(), next.to_string());
-                    }
-                    Some(_) => app.set_status("A photo album holds at most 48 pictures or text boxes"),
-                    None => app.set_status("The picture list is invalid"),
-                }
+                app.set_status(msg);
             }
             if ui.button("New Text Box").clicked() {
                 let text = d.get("boxText", "Text Box");

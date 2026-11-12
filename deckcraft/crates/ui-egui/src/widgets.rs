@@ -332,6 +332,16 @@ pub fn rows<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 /// A text dropdown field (font name, size): shows `current`, opens a popup with `add_items`.
 /// `label` is what assistive technology calls it ("Font", "Start"); `current` is exposed as its
 /// value, so an empty box is still announced by its purpose and never by an internal key (#1956).
+/// Clamp a popup width so it stays inside narrower mobile or scaled viewports.
+pub(crate) fn popup_max_width(ctx: &egui::Context, desired: f32) -> f32 {
+    desired.min((ctx.content_rect().width() - 16.0).max(160.0))
+}
+
+/// Clamp a popup's scrollable content height to fit below the ribbon on shorter viewports.
+pub(crate) fn popup_max_height(ctx: &egui::Context, desired: f32) -> f32 {
+    desired.min((ctx.content_rect().height() - 150.0).max(140.0))
+}
+
 pub fn dropdown(ui: &mut Ui, label: &str, current: &str, width: f32, enabled: bool, add_items: impl FnOnce(&mut Ui)) -> Response {
     let t = Tokens::get(ui.ctx());
     let (rect, resp) = ui.allocate_exact_size(vec2(width, 22.0), if enabled { Sense::click() } else { Sense::hover() });
@@ -356,8 +366,10 @@ pub fn dropdown(ui: &mut Ui, label: &str, current: &str, width: f32, enabled: bo
         current_text_value: (!current.is_empty()).then(|| current.to_string()),
         ..egui::WidgetInfo::labeled(egui::Role::ComboBox, enabled, label)
     });
-    egui::Popup::menu(&resp).width(width.max(140.0)).show(|ui| {
-        egui::ScrollArea::vertical().max_height(360.0).show(ui, add_items);
+    let popup_w = popup_max_width(&resp.ctx, width.max(140.0));
+    let popup_h = popup_max_height(&resp.ctx, 360.0);
+    egui::Popup::menu(&resp).width(popup_w).show(|ui| {
+        egui::ScrollArea::vertical().max_height(popup_h).show(ui, add_items);
     });
     resp
 }

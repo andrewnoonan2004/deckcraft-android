@@ -215,7 +215,7 @@ mod grid_options;
 mod hyperlink;
 mod language;
 mod paragraph;
-mod photo_album;
+pub(crate) mod photo_album;
 mod preferences;
 mod size_position;
 mod slide_size;

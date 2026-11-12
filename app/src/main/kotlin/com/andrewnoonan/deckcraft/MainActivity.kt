@@ -3,8 +3,13 @@ package com.andrewnoonan.deckcraft
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -210,15 +215,21 @@ class MainActivity : ComponentActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (::viewModel.isInitialized && viewModel.uiState.value.hasUnsavedChanges) {
-                        viewModel.dispatchCommand("file.quit")
-                        glSurfaceViewRef?.requestRender()
-                    } else {
-                        if (::viewModel.isInitialized) {
-                            viewModel.persistAndSavePreferences()
+                    if (::viewModel.isInitialized) {
+                        val state = viewModel.uiState.value
+                        if (state.inSlideshow || state.isFullscreen) {
+                            viewModel.sendEscapeKey()
+                            glSurfaceViewRef?.requestRender()
+                            return
                         }
-                        finish()
+                        if (state.hasUnsavedChanges) {
+                            viewModel.dispatchCommand("file.quit")
+                            glSurfaceViewRef?.requestRender()
+                            return
+                        }
+                        viewModel.persistAndSavePreferences()
                     }
+                    finish()
                 }
             },
         )
@@ -273,14 +284,24 @@ class MainActivity : ComponentActivity() {
                         title = if (uiState.hasUnsavedChanges) "• $base" else base
                     }
 
+                    LaunchedEffect(uiState.isFullscreen) {
+                        applyFullscreenWindowMode(uiState.isFullscreen)
+                    }
+
                     val latestSticky = remember(uiState.stickyModifiers) { uiState.stickyModifiers }
+                    val fullscreen = uiState.isFullscreen
 
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface)
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
+                            .background(
+                                if (fullscreen) androidx.compose.ui.graphics.Color.Black
+                                else MaterialTheme.colorScheme.surface,
+                            )
+                            .then(
+                                if (fullscreen) Modifier
+                                else Modifier.statusBarsPadding().navigationBarsPadding(),
+                            )
                             .imePadding(),
                     ) {
                         AndroidView(
@@ -320,6 +341,10 @@ class MainActivity : ComponentActivity() {
                                 viewModel.adjustUiScale(delta)
                                 glSurfaceViewRef?.requestRender()
                             },
+                            onExitSlideshow = {
+                                viewModel.sendEscapeKey()
+                                glSurfaceViewRef?.requestRender()
+                            },
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .padding(bottom = 10.dp, start = 12.dp, end = 12.dp),
@@ -345,8 +370,45 @@ class MainActivity : ComponentActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
+            if (::viewModel.isInitialized) {
+                applyFullscreenWindowMode(viewModel.uiState.value.isFullscreen)
+            }
             syncClipboardIntoEngine()
             glSurfaceViewRef?.requestRender()
+        }
+    }
+
+    private fun applyFullscreenWindowMode(fullscreen: Boolean) {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (fullscreen) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val attrs = window.attributes
+                if (attrs.layoutInDisplayCutoutMode !=
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                ) {
+                    attrs.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    window.attributes = attrs
+                }
+            }
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val attrs = window.attributes
+                if (attrs.layoutInDisplayCutoutMode !=
+                    WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                ) {
+                    attrs.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                    window.attributes = attrs
+                }
+            }
         }
     }
 

@@ -45,24 +45,20 @@ pub fn title_bar(app: &mut SlideApp, ui: &mut Ui) {
             let max = ui.input(|i| i.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
         }
-        let mut child = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(Rect::from_min_max(pos2(rect.min.x + left, rect.min.y), pos2(rect.min.x + 420.0, rect.max.y)))
-                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-        );
+        let right_min_x = (rect.max.x - 320.0).max(rect.min.x + left + 80.0);
+        let left_max_x = (rect.min.x + 420.0).min(rect.max.x - 190.0).max(rect.min.x + left + 40.0);
+        let left_rect = Rect::from_min_max(pos2(rect.min.x + left, rect.min.y), pos2(left_max_x, rect.max.y));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(left_rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
+        child.set_clip_rect(left_rect);
         child.spacing_mut().item_spacing.x = 2.0;
         let has_doc = app.session.active().is_some();
         let dirty = app.session.active().is_some_and(|d| d.is_dirty());
         crate::qat::show(app, &mut child);
-        let title =
-            app.session.active().map(|d| format!("{}{}", d.title(), if dirty { " — Edited" } else { "" })).unwrap_or_else(|| "DeckCraft".into());
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, title, theme::font(13.0), t.text);
+        let left_end = child.min_rect().max.x;
         // Right side.
-        let mut right = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(Rect::from_min_max(pos2(rect.max.x - 320.0, rect.min.y), pos2(rect.max.x - 10.0, rect.max.y)))
-                .layout(egui::Layout::right_to_left(egui::Align::Center)),
-        );
+        let right_rect = Rect::from_min_max(pos2(right_min_x, rect.min.y), pos2(rect.max.x - 10.0, rect.max.y));
+        let mut right = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(egui::Layout::right_to_left(egui::Align::Center)));
+        right.set_clip_rect(right_rect);
         right.spacing_mut().item_spacing.x = 6.0;
         if icon_toggle(&mut right, Icon::Search, "Search commands (⇧⌘P)", true, false).clicked() {
             app.palette = Some((String::new(), 0));
@@ -90,6 +86,20 @@ pub fn title_bar(app: &mut SlideApp, ui: &mut Ui) {
         .clicked()
         {
             let _ = app.run("view.dark", json!({}));
+        }
+        let right_start = right.min_rect().min.x;
+        let gap_rect = Rect::from_min_max(pos2(left_end + 8.0, rect.min.y), pos2((right_start - 8.0).max(left_end + 8.0), rect.max.y));
+        if gap_rect.width() >= 40.0 {
+            let title =
+                app.session.active().map(|d| format!("{}{}", d.title(), if dirty { " — Edited" } else { "" })).unwrap_or_else(|| "DeckCraft".into());
+            let font = theme::font(13.0);
+            let text_w = ui.fonts_mut(|f| f.layout_no_wrap(title.clone(), font.clone(), t.text).size().x);
+            let center_x = if rect.center().x - text_w * 0.5 >= gap_rect.min.x && rect.center().x + text_w * 0.5 <= gap_rect.max.x {
+                rect.center().x
+            } else {
+                gap_rect.center().x
+            };
+            ui.painter().with_clip_rect(gap_rect).text(pos2(center_x, rect.center().y), Align2::CENTER_CENTER, title, font, t.text);
         }
     });
 }

@@ -1,7 +1,7 @@
 use super::clock::{monotonic_secs, now_ms};
 use super::ime_hooks::ime_in_ui_pass_key;
 use super::services::{InboxEvent, Services};
-use super::state::{FilePlace, FilePurpose, ImeDescriptorKey, ImeDestination, ImeTerminalStamp, LocatedPlace, RECENT_MAX, UiState, ViewMode};
+use super::state::{FilePlace, FilePurpose, ImeDescriptorKey, ImeDestination, ImeTerminalStamp, LocatedPlace, PendingAction, RECENT_MAX, UiState, ViewMode};
 #[cfg(not(target_arch = "wasm32"))]
 use super::updates_ui;
 use super::{

@@ -89,4 +89,68 @@ class DesktopInputTranslatorTest {
             DesktopInputTranslator.mapCursorIconToPointerIconType("resize_horizontal"),
         )
     }
+
+    private fun fingerEvent(
+        actionMasked: Int,
+        pointerCount: Int,
+        xs: FloatArray,
+        ys: FloatArray,
+        eventTimeMs: Long,
+        downTimeMs: Long = 1000L,
+        actionIndex: Int = 0,
+    ): MotionEvent {
+        val props = Array(pointerCount) { idx ->
+            MotionEvent.PointerProperties().apply {
+                id = idx
+                toolType = MotionEvent.TOOL_TYPE_FINGER
+            }
+        }
+        val coords = Array(pointerCount) { idx ->
+            MotionEvent.PointerCoords().apply {
+                this.x = xs[idx]
+                this.y = ys[idx]
+                this.pressure = 1.0f
+            }
+        }
+        val fullAction = if (actionMasked == MotionEvent.ACTION_POINTER_DOWN ||
+            actionMasked == MotionEvent.ACTION_POINTER_UP
+        ) {
+            actionMasked or (actionIndex shl MotionEvent.ACTION_POINTER_INDEX_SHIFT)
+        } else {
+            actionMasked
+        }
+        return MotionEvent.obtain(
+            downTimeMs, eventTimeMs, fullAction, pointerCount, props, coords,
+            0, 0, 1f, 1f, 1, 0, InputDevice.SOURCE_TOUCHSCREEN, 0,
+        )
+    }
+
+    @Test
+    fun singleFingerTapWithRightClickLatch_emitsSecondaryClickBeforePointerGone() {
+        sticky = StickyModifierState(rightClickLatch = true)
+        translator.onTouchEvent(fingerEvent(MotionEvent.ACTION_DOWN, 1, floatArrayOf(120f), floatArrayOf(240f), 1000L), 2f)
+        translator.onTouchEvent(fingerEvent(MotionEvent.ACTION_UP, 1, floatArrayOf(120f), floatArrayOf(240f), 1040L), 2f)
+
+        val btnPressIdx = bridge.calls.indexOf("button(${EguiPointerButton.SECONDARY},true,mods=0)")
+        val btnReleaseIdx = bridge.calls.indexOf("button(${EguiPointerButton.SECONDARY},false,mods=0)")
+        val goneIdx = bridge.calls.lastIndexOf("gone")
+        assertTrue(btnPressIdx >= 0)
+        assertTrue(btnReleaseIdx > btnPressIdx)
+        assertTrue(goneIdx > btnReleaseIdx)
+        assertEquals(1, latchConsumed)
+    }
+
+    @Test
+    fun twoFingerQuickTap_synthesizesSecondaryClickAtMidpoint() {
+        translator.onTouchEvent(fingerEvent(MotionEvent.ACTION_DOWN, 1, floatArrayOf(100f), floatArrayOf(200f), 1000L, 1000L), 1f)
+        translator.onTouchEvent(
+            fingerEvent(MotionEvent.ACTION_POINTER_DOWN, 2, floatArrayOf(100f, 140f), floatArrayOf(200f, 240f), 1020L, 1000L, actionIndex = 1),
+            1f,
+        )
+        translator.onTouchEvent(fingerEvent(MotionEvent.ACTION_UP, 1, floatArrayOf(120f), floatArrayOf(220f), 1100L, 1000L), 1f)
+
+        assertTrue(bridge.calls.contains("move(120.0,220.0)"))
+        assertTrue(bridge.calls.contains("button(${EguiPointerButton.SECONDARY},true,mods=0)"))
+        assertTrue(bridge.calls.contains("button(${EguiPointerButton.SECONDARY},false,mods=0)"))
+    }
 }

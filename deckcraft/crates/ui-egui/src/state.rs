@@ -14,6 +14,24 @@ pub(crate) enum FilePurpose {
     Infer,
 }
 
+/// What should happen once an asynchronous `open_async` file pick finishes reading bytes.
+#[derive(Clone, Debug)]
+pub(crate) enum PendingAction {
+    Purpose(FilePurpose),
+    Command {
+        cmd: &'static str,
+        extra: serde_json::Value,
+    },
+    PictureParam {
+        cmd: &'static str,
+        field: &'static str,
+    },
+    ReuseSlides {
+        keep: bool,
+    },
+    PhotoAlbumPicture,
+}
+
 /// Where in a presentation a file should land. Ids, not indices: slides can move while
 /// the browser is still reading.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

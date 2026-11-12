@@ -73,7 +73,7 @@ pub use panels::selpane;
 pub use panels::thumbs;
 pub use ribbon::qat;
 pub use services::{DownloadFn, HostSaveFn, Inbox, InboxEvent, InboxFile, OpenAsyncFn, PickFn, ReadFn, Services, WriteFn};
-use state::{FilePlace, FilePurpose, ImeDescriptorKey, ImeDestination, ImeTerminalStamp};
+use state::{FilePlace, ImeDescriptorKey, ImeDestination, ImeTerminalStamp, PendingAction};
 pub use state::{RECENT_MAX, UiState, ViewMode, ZOOM_RANGE};
 
 /// The presentation (and place in it) captured when the request started.
@@ -90,7 +90,7 @@ enum FileTarget {
 
 struct PendingFile {
     id: u64,
-    purpose: FilePurpose,
+    action: PendingAction,
     target: FileTarget,
 }
 

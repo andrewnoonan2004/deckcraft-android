@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,6 +58,7 @@ fun DesktopControlOverlay(
     onShareDocument: () -> Unit,
     onAdjustScale: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    onExitSlideshow: (() -> Unit)? = null,
 ) {
     if (!state.isDesktopBarVisible) {
         return
@@ -64,6 +66,9 @@ fun DesktopControlOverlay(
 
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     var dragOffsetY by remember { mutableFloatStateOf(0f) }
+    var slideshowExpanded by remember(state.inSlideshow) { mutableStateOf(false) }
+    val barExpanded = if (state.inSlideshow) slideshowExpanded else state.isDesktopBarExpanded
+    val inCompactSlideshow = state.inSlideshow && !barExpanded
 
     Surface(
         modifier = modifier
@@ -76,10 +81,15 @@ fun DesktopControlOverlay(
                 }
             },
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-        shadowElevation = 6.dp,
-        tonalElevation = 4.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+            alpha = if (inCompactSlideshow) 0.52f else 0.94f,
+        ),
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = if (inCompactSlideshow) 0.35f else 0.6f),
+        ),
+        shadowElevation = if (inCompactSlideshow) 2.dp else 6.dp,
+        tonalElevation = if (inCompactSlideshow) 1.dp else 4.dp,
     ) {
         Row(
             modifier = Modifier
@@ -89,13 +99,33 @@ fun DesktopControlOverlay(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             DockPillButton(
-                label = if (state.isDesktopBarExpanded) "▾ Dock" else "▴ Desktop",
-                active = !state.isDesktopBarExpanded && state.stickyModifiers.let { it.ctrl || it.shift || it.alt || it.rightClickLatch },
+                label = when {
+                    state.inSlideshow && barExpanded -> "▾ Hide"
+                    state.inSlideshow -> "▴ Controls"
+                    state.isDesktopBarExpanded -> "▾ Dock"
+                    else -> "▴ Desktop"
+                },
+                active = !barExpanded && state.stickyModifiers.let { it.ctrl || it.shift || it.alt || it.rightClickLatch },
                 tag = "btn_toggle_dock",
-                onClick = onToggleExpanded,
+                onClick = {
+                    if (state.inSlideshow) {
+                        slideshowExpanded = !slideshowExpanded
+                    } else {
+                        onToggleExpanded()
+                    }
+                },
             )
 
-            if (state.isDesktopBarExpanded) {
+            if (state.inSlideshow && onExitSlideshow != null) {
+                DockPillButton(
+                    label = "Exit Show",
+                    active = false,
+                    tag = "btn_exit_slideshow",
+                    onClick = onExitSlideshow,
+                )
+            }
+
+            if (barExpanded) {
                 DockDivider()
 
                 // Sticky Desktop Modifiers (Expressive Primary Accent)

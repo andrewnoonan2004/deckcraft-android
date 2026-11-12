@@ -186,3 +186,90 @@ fn a_dropped_file_stays_on_the_slide_it_was_dropped_on() {
     assert_eq!(pictures(&app, uid, slide0), 1, "{status}");
     assert_eq!(pictures(&app, uid, slide1), 0);
 }
+
+#[test]
+fn async_open_hosts_support_sound_background_photo_album_reuse_theme_and_compare() {
+    let (mut app, inbox, started) = setup();
+    assert!(app.can_pick_open(), "open_async hosts should enable file-picker UI controls");
+
+    // 1. Transition sound async pick
+    app.pick_transition_sound();
+    let sound_req = started.lock().expect("request log").last().expect("sound request").clone();
+    assert_eq!(sound_req.0, "audio");
+    deliver(&inbox, sound_req.1, "ding.wav", wav());
+    app.drain_inbox();
+    assert!(
+        app.session.active().unwrap().current_slide().unwrap().transition.as_ref().and_then(|t| t.sound).is_some(),
+        "transition sound should be attached"
+    );
+
+    // 2. Slide background picture async pick
+    app.pick_picture_param("design.background", "picture");
+    let bg_req = started.lock().expect("request log").last().expect("bg request").clone();
+    assert_eq!(bg_req.0, "picture");
+    deliver(&inbox, bg_req.1, "backdrop.png", png());
+    app.drain_inbox();
+    assert!(app.session.active().unwrap().current_slide().unwrap().background.is_some());
+
+    // 3. Photo album Add Pictures async pick appends to the open photoAlbum dialog
+    app.run("insert.photoAlbum", json!({})).unwrap();
+    assert_eq!(app.dialog.as_ref().map(|d| d.id.as_str()), Some("photoAlbum"));
+    let count_items = |d: &crate::dialogs::Dialog| -> usize {
+        d.fields
+            .get("items")
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            .and_then(|v| v.as_array().map(Vec::len))
+            .unwrap_or(0)
+    };
+    let items_before = count_items(app.dialog.as_ref().unwrap());
+    crate::dialogs::photo_album::pick_album_picture(&mut app);
+    let album_req = started.lock().expect("request log").last().expect("album request").clone();
+    assert_eq!(album_req.0, "picture");
+    deliver(&inbox, album_req.1, "slide_photo.png", png());
+    app.drain_inbox();
+    let items_after = count_items(app.dialog.as_ref().unwrap());
+    assert_eq!(items_after, items_before + 1);
+    app.dialog = None;
+
+    // 4. Reuse Slides & Compare & Browse Theme via async picks
+    let mut src_session = Session::with_new();
+    src_session.execute("slide.new", &json!({})).unwrap();
+    let tmp_deck = std::env::temp_dir().join(format!("deckcraft_ui_egui_async_{}.deckcraft", std::process::id()));
+    src_session.execute("file.save", &json!({"path": tmp_deck.to_string_lossy()})).unwrap();
+    let deck_bytes = std::fs::read(&tmp_deck).unwrap();
+    let _ = std::fs::remove_file(&tmp_deck);
+
+    app.pick_and_reuse(true);
+    let reuse_req = started.lock().expect("request log").last().expect("reuse request").clone();
+    assert_eq!(reuse_req.0, "reuse");
+    deliver(&inbox, reuse_req.1, "source.deckcraft", deck_bytes.clone());
+    app.drain_inbox();
+    assert_eq!(
+        app.dialog.as_ref().map(|d| d.id.as_str()),
+        Some("reuseSlides"),
+        "Reuse Slides should open slide selection dialog with the picked source"
+    );
+    assert!(
+        app.dialog.as_ref().and_then(|d| d.params["slides"].as_array()).map_or(0, Vec::len) >= 2,
+        "Reuse Slides dialog should list slides from the source presentation"
+    );
+    app.dialog = None;
+    assert_eq!(app.session.documents().len(), 1, "Reuse must not open source as a standalone tab");
+
+    app.run("app.compareDialog", json!({})).unwrap();
+    let compare_req = started.lock().expect("request log").last().expect("compare request").clone();
+    assert_eq!(compare_req.0, "compare");
+    deliver(&inbox, compare_req.1, "other.deckcraft", deck_bytes.clone());
+    app.drain_inbox();
+    assert_eq!(app.session.documents().len(), 1, "Compare must not open other deck as a standalone tab");
+    let status = app.status.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
+    assert!(!status.contains("failed"), "unexpected compare error: {status}");
+
+    app.run("app.browseThemeDialog", json!({})).unwrap();
+    let theme_req = started.lock().expect("request log").last().expect("theme request").clone();
+    assert_eq!(theme_req.0, "theme");
+    deliver(&inbox, theme_req.1, "theme.deckcraft", deck_bytes);
+    app.drain_inbox();
+    let status = app.status.as_ref().map(|(t, _)| t.clone()).unwrap_or_default();
+    assert!(!status.contains("failed"), "unexpected browseTheme error: {status}");
+}

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import com.andrewnoonan.deckcraft.bridge.DeckCraftNativeBridge
 import com.andrewnoonan.deckcraft.bridge.PickerRequestDto
 import com.andrewnoonan.deckcraft.bridge.PlatformEffectsDto
+import com.andrewnoonan.deckcraft.input.EguiKeys
 import com.andrewnoonan.deckcraft.input.StickyModifierState
 import com.andrewnoonan.deckcraft.platform.ClipboardBridge
 import com.andrewnoonan.deckcraft.platform.PreferencesStore
@@ -28,6 +29,8 @@ data class WorkbenchUiState(
     val pendingPickerRequest: PickerRequestDto? = null,
     val wantsSoftKeyboard: Boolean = false,
     val closeRequested: Boolean = false,
+    val isFullscreen: Boolean = false,
+    val inSlideshow: Boolean = false,
 )
 
 class WorkbenchViewModel(
@@ -132,6 +135,14 @@ class WorkbenchViewModel(
         }
     }
 
+    fun sendEscapeKey() {
+        val handle = engineHandle
+        if (handle != 0L) {
+            nativeBridge.pushKey(handle, EguiKeys.ESCAPE, true, false, 0)
+            nativeBridge.pushKey(handle, EguiKeys.ESCAPE, false, false, 0)
+        }
+    }
+
     fun requestSoftKeyboardToggle() {
         _uiState.update { state -> state.copy(wantsSoftKeyboard = !state.wantsSoftKeyboard) }
     }
@@ -180,6 +191,8 @@ class WorkbenchViewModel(
                 wantsSoftKeyboard = effects.wantsIme,
                 closeRequested = effects.closeRequested,
                 pendingPickerRequest = effects.pickerRequest ?: state.pendingPickerRequest,
+                isFullscreen = effects.fullscreen,
+                inSlideshow = effects.inSlideshow,
             )
         }
     }

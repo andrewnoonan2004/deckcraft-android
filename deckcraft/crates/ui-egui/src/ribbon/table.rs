@@ -67,7 +67,7 @@ pub(super) fn table_design(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "table.style", json!({"style": id}));
         }
         let more = widgets::drop_button(ui, "", vec2(14.0, 40.0), true);
-        egui::Popup::menu(&more).width(360.0).show(|ui| {
+        egui::Popup::menu(&more).width(widgets::popup_max_width(ui.ctx(), 360.0)).show(|ui| {
             ui.horizontal_wrapped(|ui| {
                 for (id, label) in &styles {
                     let (r, resp) = ui.allocate_exact_size(vec2(48.0, 36.0), Sense::click());

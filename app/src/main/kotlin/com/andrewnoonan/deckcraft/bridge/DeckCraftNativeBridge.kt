@@ -38,6 +38,8 @@ data class PlatformEffectsDto(
     val pickerRequest: PickerRequestDto? = null,
     val savedFile: SavedFileEventDto? = null,
     val printJob: PrintJobRequestDto? = null,
+    val fullscreen: Boolean = false,
+    val inSlideshow: Boolean = false,
 )
 
 interface DeckCraftNativeBridge {

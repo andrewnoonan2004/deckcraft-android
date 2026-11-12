@@ -29,6 +29,8 @@ class PlatformEffectsParserTest {
               },
               "savedFile": {"path": "/tmp/pitch.pptx"},
               "printJob": {"jobName": "pitch.pptx", "pdfPath": "/tmp/print.pdf"},
+              "fullscreen": true,
+              "inSlideshow": true,
               "someFutureField": 123
             }
         """.trimIndent()
@@ -42,6 +44,8 @@ class PlatformEffectsParserTest {
         assertEquals("pitch.pptx • — DeckCraft", effects.windowTitle)
         assertTrue(effects.hasUnsavedChanges)
         assertFalse(effects.closeRequested)
+        assertTrue(effects.fullscreen)
+        assertTrue(effects.inSlideshow)
         val picker = effects.pickerRequest
         assertNotNull(picker)
         assertEquals(42L, picker!!.id)
@@ -56,6 +60,8 @@ class PlatformEffectsParserTest {
         val empty = PlatformEffectsParser.parse("")
         assertEquals("default", empty.cursorIcon)
         assertNull(empty.pickerRequest)
+        assertFalse(empty.fullscreen)
+        assertFalse(empty.inSlideshow)
 
         val broken = PlatformEffectsParser.parse("{not-valid-json")
         assertEquals("DeckCraft", broken.windowTitle)

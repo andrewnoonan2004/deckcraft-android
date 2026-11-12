@@ -59,7 +59,7 @@ pub(super) fn animations(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "animation.set", json!({"effect": a.0, "class": a.2.xml()}));
         }
         let more = widgets::drop_button(ui, "", vec2(14.0, 52.0), has_sel);
-        egui::Popup::menu(&more).width(420.0).show(|ui| {
+        egui::Popup::menu(&more).width(widgets::popup_max_width(ui.ctx(), 420.0)).show(|ui| {
             for (cls, label) in
                 [(AnimClass::Entrance, "Entrance"), (AnimClass::Emphasis, "Emphasis"), (AnimClass::Exit, "Exit"), (AnimClass::Path, "Motion Paths")]
             {

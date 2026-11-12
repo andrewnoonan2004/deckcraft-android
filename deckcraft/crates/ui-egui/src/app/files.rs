@@ -1,5 +1,5 @@
 use super::{
-    FilePlace, FilePurpose, FileTarget, InboxEvent, LocatedPlace, PendingFile, RECENT_MAX, SlideApp, Target, UiRequest, Value, ViewMode, dialogs,
+    FilePlace, FilePurpose, FileTarget, InboxEvent, LocatedPlace, PendingAction, PendingFile, RECENT_MAX, SlideApp, Target, UiRequest, Value, ViewMode, dialogs,
     json, media,
 };
 
@@ -342,41 +342,53 @@ impl SlideApp {
     }
 
     /// Transitions › Sound › Other Sound…: pick an audio file for the selected slides.
+    /// Whether this host can open local user files (synchronously via `pick_open` or asynchronously via `open_async`).
+    pub(crate) fn can_pick_open(&self) -> bool {
+        self.services.pick_open.is_some() || self.services.open_async.is_some()
+    }
+
     pub(crate) fn pick_transition_sound(&mut self) {
-        if self.services.pick_open.is_some() {
+        if self.can_pick_open() {
             self.pick_and_insert("audio", "transition.sound");
         }
     }
 
-    /// Home › New Slide › Reuse Slides…: pick a presentation and insert all its slides after the
-    /// current one (desktop only: the browser picker opens what it picks as a document).
-    pub(super) fn pick_and_reuse(&mut self, keep: bool) {
-        let Some(pick) = self.services.pick_open.as_mut() else {
+    /// Home › New Slide › Reuse Slides…: pick a presentation and offer its slides to insert
+    /// after the current one.
+    pub(crate) fn pick_and_reuse(&mut self, keep: bool) {
+        if let Some(pick) = self.services.pick_open.as_mut() {
+            let Some(path) = pick("open") else { return };
+            // Read the file once: the list shown and the slides inserted come from the same bytes, even
+            // if the file changes while the dialog is open. Without a reader the path is used as is.
+            let mut source = json!({});
+            match self.services.read.as_ref().map(|r| r(&path)) {
+                Some(Ok(bytes)) => {
+                    let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                    source["name"] = json!(name);
+                    source["data"] = json!(deckcraft_engine::cmd::base64_encode(&bytes));
+                }
+                Some(Err(e)) => {
+                    self.set_status(e.to_string());
+                    return;
+                }
+                None => source["path"] = json!(path),
+            }
+            let target = self.capture_file_target();
+            self.finish_reuse_pick(path, source, keep, target);
+        } else if self.services.open_async.is_some() {
+            let _ = self.begin_async_pick("reuse", PendingAction::ReuseSlides { keep });
+        } else {
             self.set_status("Reuse Slides needs the desktop app".to_string());
-            return;
-        };
-        let Some(path) = pick("open") else { return };
-        // Read the file once: the list shown and the slides inserted come from the same bytes, even
-        // if the file changes while the dialog is open. Without a reader the path is used as is.
-        let mut source = json!({});
-        match self.services.read.as_ref().map(|r| r(&path)) {
-            Some(Ok(bytes)) => {
-                let name = std::path::Path::new(&path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                source["name"] = json!(name);
-                source["data"] = json!(deckcraft_engine::cmd::base64_encode(&bytes));
-            }
-            Some(Err(e)) => {
-                self.set_status(e.to_string());
-                return;
-            }
-            None => source["path"] = json!(path),
         }
+    }
+
+    fn finish_reuse_pick(&mut self, path: String, source: Value, keep: bool, target: FileTarget) {
         // Offer the file's slides to choose from; all of them are ticked to begin with.
         match self.session.execute("slide.reuseList", &source) {
             Ok(list) => {
                 let mut d = dialogs::Dialog::new("reuseSlides");
                 d.params = json!({"path": path, "source": source, "keep": keep, "slides": list["slides"]});
-                self.reuse_target = Some(self.capture_file_target());
+                self.reuse_target = Some(target);
                 self.dialog = Some(d);
             }
             Err(e) => self.set_status(e.to_string()),
@@ -408,12 +420,12 @@ impl SlideApp {
         }
     }
 
-    pub(crate) fn pick_and_insert(&mut self, purpose: &str, cmd: &str) {
+    pub(crate) fn pick_and_insert(&mut self, purpose: &str, cmd: &'static str) {
         self.pick_and_run(purpose, cmd, &json!({}));
     }
 
     /// Pick a file and run `cmd` with it (`name` + `data`, or `path`) added to `extra`.
-    pub(super) fn pick_and_run(&mut self, purpose: &str, cmd: &str, extra: &Value) {
+    pub(super) fn pick_and_run(&mut self, purpose: &str, cmd: &'static str, extra: &Value) {
         if let Some(pick) = self.services.pick_open.as_mut() {
             if let Some(path) = pick(purpose) {
                 let mut args = if extra.is_object() { extra.clone() } else { json!({}) };
@@ -434,16 +446,29 @@ impl SlideApp {
                 }
             }
         } else if self.services.open_async.is_some() {
-            let id = self.begin_external_file(purpose);
-            // Change Picture: the picture that arrives replaces the selected one (#115).
-            if cmd == "picture.change"
-                && let Some(r) = self.pending_files.iter_mut().find(|r| r.id == id)
+            let action = if cmd == "picture.change" {
+                PendingAction::Purpose(FilePurpose::ChangePicture)
+            } else if matches!(cmd, "insert.picture" | "insert.audio" | "insert.video") {
+                PendingAction::Purpose(purpose_of(purpose))
+            } else {
+                PendingAction::Command { cmd, extra: extra.clone() }
+            };
+            let async_purpose = if cmd == "review.compare" { "compare" } else { purpose };
+            let _ = self.begin_async_pick(async_purpose, action);
+        }
+    }
+
+    /// Pick an image file and pass `{ <field>: base64(bytes) }` to `cmd` (used for picture fills).
+    pub(crate) fn pick_picture_param(&mut self, cmd: &'static str, field: &'static str) {
+        if let Some(pick) = self.services.pick_open.as_mut() {
+            if let Some(path) = pick("picture")
+                && let Some(Ok(bytes)) = self.services.read.as_ref().map(|r| r(&path))
+                && let Err(e) = self.session.execute(cmd, &json!({field: deckcraft_engine::cmd::base64_encode(&bytes)}))
             {
-                r.purpose = FilePurpose::ChangePicture;
+                self.set_status(e.to_string());
             }
-            if let Some(f) = self.services.open_async.as_mut() {
-                f(purpose, id);
-            }
+        } else if self.services.open_async.is_some() {
+            let _ = self.begin_async_pick("picture", PendingAction::PictureParam { cmd, field });
         }
     }
 
@@ -629,10 +654,25 @@ impl SlideApp {
     /// echo on the [`InboxEvent`]. Call this when the pick or the drop starts, not when the
     /// bytes arrive.
     pub fn begin_external_file(&mut self, purpose: &str) -> u64 {
+        self.begin_external_action(PendingAction::Purpose(purpose_of(purpose)))
+    }
+
+    pub(crate) fn begin_external_action(&mut self, action: PendingAction) -> u64 {
         let id = self.next_file_id;
         self.next_file_id = self.next_file_id.wrapping_add(1).max(1);
-        self.pending_files.push(PendingFile { id, purpose: purpose_of(purpose), target: self.capture_file_target() });
+        self.pending_files.push(PendingFile { id, action, target: self.capture_file_target() });
         id
+    }
+
+    pub(crate) fn begin_async_pick(&mut self, purpose: &str, action: PendingAction) -> Option<u64> {
+        if self.services.open_async.is_none() {
+            return None;
+        }
+        let id = self.begin_external_action(action);
+        if let Some(f) = self.services.open_async.as_mut() {
+            f(purpose, id);
+        }
+        Some(id)
     }
 
     /// A dropped or picked file read synchronously: presentations open, media is inserted on
@@ -686,30 +726,62 @@ impl SlideApp {
         }
     }
 
+    fn execute_on_captured_target(&mut self, target: &FileTarget, label: &str, cmd: &str, params: &Value) -> Result<(), String> {
+        if cmd == "file.openBytes" || self.viewing_target(target) {
+            self.session.execute(cmd, params).map(|_| ()).map_err(|e| e.to_string())
+        } else {
+            self.execute_on_target(target, label, cmd, params)
+        }
+    }
+
     fn apply_external_file(&mut self, id: u64, name: &str, bytes: &[u8]) {
         let Some(pos) = self.pending_files.iter().position(|r| r.id == id) else { return };
         let req = self.pending_files.remove(pos);
-        let cmd = match command_for(req.purpose, name, bytes) {
-            Ok(cmd) => cmd,
-            Err(e) => {
-                self.set_status(e);
-                return;
+        match req.action {
+            PendingAction::Purpose(purpose) => {
+                let cmd = match command_for(purpose, name, bytes) {
+                    Ok(cmd) => cmd,
+                    Err(e) => {
+                        self.set_status(e);
+                        return;
+                    }
+                };
+                let params = if cmd == "slide.fromOutline" {
+                    json!({"text": deckcraft_engine::cmd::file::outline_text(bytes), "markdown": name.to_ascii_lowercase().ends_with(".md")})
+                } else {
+                    json!({"name": name, "data": deckcraft_engine::cmd::base64_encode(bytes)})
+                };
+                match self.execute_on_captured_target(&req.target, name, cmd, &params) {
+                    Err(e) if cmd == "file.openBytes" => self.notify(e),
+                    Err(e) => self.set_status(e),
+                    Ok(()) => {}
+                }
             }
-        };
-        let params = if cmd == "slide.fromOutline" {
-            json!({"text": deckcraft_engine::cmd::file::outline_text(bytes), "markdown": name.to_ascii_lowercase().ends_with(".md")})
-        } else {
-            json!({"name": name, "data": deckcraft_engine::cmd::base64_encode(bytes)})
-        };
-        let result = if cmd == "file.openBytes" || self.viewing_target(&req.target) {
-            self.session.execute(cmd, &params).map(|_| ()).map_err(|e| e.to_string())
-        } else {
-            self.execute_on_target(&req.target, name, cmd, &params)
-        };
-        match result {
-            Err(e) if cmd == "file.openBytes" => self.notify(e),
-            Err(e) => self.set_status(e),
-            Ok(()) => {}
+            PendingAction::Command { cmd, extra } => {
+                let mut params = if extra.is_object() { extra } else { json!({}) };
+                params["name"] = json!(name);
+                params["data"] = json!(deckcraft_engine::cmd::base64_encode(bytes));
+                if let Err(e) = self.execute_on_captured_target(&req.target, name, cmd, &params) {
+                    self.set_status(e);
+                }
+            }
+            PendingAction::PictureParam { cmd, field } => {
+                if !deckcraft_engine::cmd::insert::content_type(name, bytes).starts_with("image/") {
+                    self.set_status(format!("{name}: DeckCraft can't use this kind of file as a picture"));
+                    return;
+                }
+                let params = json!({field: deckcraft_engine::cmd::base64_encode(bytes)});
+                if let Err(e) = self.execute_on_captured_target(&req.target, name, cmd, &params) {
+                    self.set_status(e);
+                }
+            }
+            PendingAction::ReuseSlides { keep } => {
+                let source = json!({"name": name, "data": deckcraft_engine::cmd::base64_encode(bytes)});
+                self.finish_reuse_pick(name.to_string(), source, keep, req.target);
+            }
+            PendingAction::PhotoAlbumPicture => {
+                dialogs::photo_album::append_async_picture(self, name, bytes);
+            }
         }
         self.drain_requests();
     }

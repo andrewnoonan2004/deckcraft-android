@@ -54,7 +54,9 @@ pub(super) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
         .active()
         .and_then(|d| d.doc.masters.first().map(|m| m.layouts.iter().map(|l| (l.name.clone(), l.id)).collect()))
         .unwrap_or_default();
-    egui::Grid::new(("layouts", cmd)).spacing(vec2(6.0, 6.0)).show(ui, |ui| {
+    let max_h = widgets::popup_max_height(ui.ctx(), 420.0);
+    egui::ScrollArea::both().max_height(max_h).show(ui, |ui| {
+        egui::Grid::new(("layouts", cmd)).spacing(vec2(6.0, 6.0)).show(ui, |ui| {
         for (k, (name, id)) in layouts.iter().enumerate() {
             let idx = app.session.active().and_then(|d| d.doc.masters.first().and_then(|m| m.layouts.iter().position(|l| l.id == *id)));
             let resp = ui.vertical(|ui| {
@@ -93,6 +95,7 @@ pub(super) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
                 ui.end_row();
             }
         }
+        });
     });
 }
 
@@ -104,7 +107,7 @@ fn slides_group(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "slide.new", json!({}));
         }
         if let Some(a) = arrow {
-            egui::Popup::menu(&a).width(420.0).show(|ui| new_slide_menu(app, ui));
+            egui::Popup::menu(&a).width(widgets::popup_max_width(ui.ctx(), 420.0)).show(|ui| new_slide_menu(app, ui));
         }
         rows(ui, |ui| {
             let (main, arrow) = small_button_ex(ui, Icon::Layout, "Layout", enabled(app, "slide.layout"), false, true);
@@ -130,7 +133,7 @@ fn new_slide_menu(app: &mut SlideApp, ui: &mut Ui) {
     if ui.button("Slides from Outline…").clicked() {
         app.dialog = Some(crate::dialogs::Dialog::new("outline"));
     }
-    let desktop = app.services.pick_open.is_some();
+    let desktop = app.can_pick_open();
     for (label, keep) in [("Reuse Slides…", false), ("Reuse Slides (Keep Source Formatting)…", true)] {
         let r = ui.add_enabled(desktop, egui::Button::new(label));
         if r.clicked() {
@@ -409,7 +412,7 @@ fn drawing_group(app: &mut SlideApp, ui: &mut Ui) {
         let r = big_button(ui, Icon::Arrange, "Arrange", sel);
         egui::Popup::menu(&r).show(|ui| arrange_menu(app, ui));
         let r = big_button(ui, Icon::QuickStyles, "Quick\nStyles", sel);
-        egui::Popup::menu(&r).width(330.0).show(|ui| quick_styles(app, ui));
+        egui::Popup::menu(&r).width(widgets::popup_max_width(ui.ctx(), 330.0)).show(|ui| quick_styles(app, ui));
         rows(ui, |ui| {
             let sc = scheme(app);
             let (m, a) = small_button_ex(ui, Icon::ShapeFill, "Shape Fill", sel, false, true);

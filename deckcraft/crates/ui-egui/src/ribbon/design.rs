@@ -58,25 +58,29 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
     group(ui, |ui| {
         let r = big_button(ui, Icon::Colors, "Colors", true);
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Colors"));
-        egui::Popup::menu(&r).width(240.0).show(|ui| {
-            for cs in deckcraft_model::theme::builtin_color_schemes() {
-                ui.horizontal(|ui| {
-                    let (rect, resp) = ui.allocate_exact_size(vec2(220.0, 20.0), Sense::click());
-                    let p = ui.painter();
-                    for (k, c) in cs.colors.iter().take(10).skip(2).enumerate() {
-                        p.rect_filled(
-                            Rect::from_min_size(rect.min + vec2(k as f32 * 12.0, 3.0), vec2(11.0, 14.0)),
-                            CornerRadius::ZERO,
-                            theme::to_color32(*c),
-                        );
-                    }
-                    p.text(rect.min + vec2(104.0, 10.0), Align2::LEFT_CENTER, &cs.name, theme::font(12.0), Tokens::get(ui.ctx()).text);
-                    if resp.clicked() {
-                        run(app, "design.colors", json!({"name": cs.name}));
-                        ui.close();
-                    }
-                });
-            }
+        egui::Popup::menu(&r).width(crate::widgets::popup_max_width(ui.ctx(), 240.0)).show(|ui| {
+            let max_h = (crate::widgets::popup_max_height(ui.ctx(), 560.0) - 34.0).max(80.0);
+            egui::ScrollArea::vertical().id_salt("design_colors_scroll").max_height(max_h).show(ui, |ui| {
+                for cs in deckcraft_model::theme::builtin_color_schemes() {
+                    ui.horizontal(|ui| {
+                        let w = crate::widgets::popup_max_width(ui.ctx(), 220.0);
+                        let (rect, resp) = ui.allocate_exact_size(vec2(w, 20.0), Sense::click());
+                        let p = ui.painter();
+                        for (k, c) in cs.colors.iter().take(10).skip(2).enumerate() {
+                            p.rect_filled(
+                                Rect::from_min_size(rect.min + vec2(k as f32 * 12.0, 3.0), vec2(11.0, 14.0)),
+                                CornerRadius::ZERO,
+                                theme::to_color32(*c),
+                            );
+                        }
+                        p.text(rect.min + vec2(104.0, 10.0), Align2::LEFT_CENTER, &cs.name, theme::font(12.0), Tokens::get(ui.ctx()).text);
+                        if resp.clicked() {
+                            run(app, "design.colors", json!({"name": cs.name}));
+                            ui.close();
+                        }
+                    });
+                }
+            });
             ui.separator();
             if ui.button("Customize Colors…").clicked() {
                 run(app, "design.colors", json!({}));
@@ -85,12 +89,15 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
         });
         let r = big_button(ui, Icon::Fonts, "Fonts", true);
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Fonts"));
-        egui::Popup::menu(&r).width(220.0).show(|ui| {
-            for fs in deckcraft_model::theme::builtin_font_schemes() {
-                if ui.button(format!("{}\n   {} / {}", fs.name, fs.major.latin, fs.minor.latin)).clicked() {
-                    run(app, "design.fonts", json!({"name": fs.name}));
+        egui::Popup::menu(&r).width(crate::widgets::popup_max_width(ui.ctx(), 220.0)).show(|ui| {
+            let max_h = (crate::widgets::popup_max_height(ui.ctx(), 560.0) - 34.0).max(80.0);
+            egui::ScrollArea::vertical().id_salt("design_fonts_scroll").max_height(max_h).show(ui, |ui| {
+                for fs in deckcraft_model::theme::builtin_font_schemes() {
+                    if ui.button(format!("{}\n   {} / {}", fs.name, fs.major.latin, fs.minor.latin)).clicked() {
+                        run(app, "design.fonts", json!({"name": fs.name}));
+                    }
                 }
-            }
+            });
             ui.separator();
             if ui.button("Customize Fonts…").clicked() {
                 run(app, "design.fonts", json!({}));
@@ -99,7 +106,7 @@ pub(super) fn design(app: &mut SlideApp, ui: &mut Ui) {
         });
         let r = big_button(ui, Icon::ShapeEffects, "Effects", true);
         r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, "Effects"));
-        egui::Popup::menu(&r).width(180.0).show(|ui| {
+        egui::Popup::menu(&r).width(crate::widgets::popup_max_width(ui.ctx(), 180.0)).show(|ui| {
             for fs in deckcraft_model::theme::builtin_format_schemes() {
                 if ui.button(&fs.name).clicked() {
                     run(app, "design.effects", json!({"name": fs.name}));

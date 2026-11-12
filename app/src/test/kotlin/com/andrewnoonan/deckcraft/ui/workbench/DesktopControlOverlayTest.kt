@@ -114,4 +114,42 @@ class DesktopControlOverlayTest {
         composeTestRule.onNodeWithTag("btn_scale_up").performClick()
         assertEquals(10, scaleDelta)
     }
+
+    @Test
+    fun desktopControlOverlay_duringSlideshow_autoCollapsesAndExposesControlsAndExitWithoutMutatingPref() {
+        var toggleExpandedCount = 0
+        var exitSlideshowClicked = false
+
+        composeTestRule.setContent {
+            DesktopControlOverlay(
+                state = WorkbenchUiState(
+                    isDesktopBarExpanded = true,
+                    inSlideshow = true,
+                ),
+                onToggleExpanded = { toggleExpandedCount++ },
+                onToggleCtrl = {},
+                onToggleShift = {},
+                onToggleAlt = {},
+                onToggleRightClick = {},
+                onCommand = {},
+                onToggleKeyboard = {},
+                onShareDocument = {},
+                onAdjustScale = {},
+                onExitSlideshow = { exitSlideshowClicked = true },
+            )
+        }
+
+        // In slideshow, dock starts collapsed as compact controls + exit pills.
+        composeTestRule.onNodeWithText("▴ Controls").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_exit_slideshow").assertIsDisplayed()
+
+        // Expanding temporarily reveals full controls without mutating persisted dock preference.
+        composeTestRule.onNodeWithTag("btn_toggle_dock").performClick()
+        assertEquals(0, toggleExpandedCount)
+        composeTestRule.onNodeWithText("▾ Hide").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("btn_cmd_palette").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("btn_exit_slideshow").performClick()
+        assertTrue(exitSlideshowClicked)
+    }
 }

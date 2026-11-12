@@ -77,6 +77,8 @@ pub struct PlatformEffectsDto {
     pub saved_file: Option<SavedFileEventDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub print_job: Option<PrintJobRequestDto>,
+    pub fullscreen: bool,
+    pub in_slideshow: bool,
 }
 
 impl Default for PlatformEffectsDto {
@@ -95,6 +97,8 @@ impl Default for PlatformEffectsDto {
             picker_request: None,
             saved_file: None,
             print_job: None,
+            fullscreen: false,
+            in_slideshow: false,
         }
     }
 }
@@ -173,6 +177,7 @@ fn extensions_for_purpose(purpose: &str) -> Vec<String> {
         "audio" => vec!["mp3", "wav", "m4a", "aac", "ogg", "opus", "flac"],
         "video" => vec!["mp4", "mov", "webm", "m4v", "mkv"],
         "theme" => vec!["deckcraft", "pptx", "potx", "thmx"],
+        "compare" | "reuse" => vec!["deckcraft", "pptx", "potx", "ppsx"],
         _ => vec!["deckcraft", "pptx", "potx", "ppsx", "txt", "md", "rtf"],
     }
     .into_iter()
@@ -263,6 +268,8 @@ struct ThreadBoundCore {
     print_jobs: VecDeque<PrintJobRequestDto>,
     last_journal_len: usize,
     in_save_dialog: bool,
+    fullscreen: bool,
+    deferred_events: Vec<egui::Event>,
 }
 
 impl ThreadBoundCore {
@@ -314,6 +321,7 @@ impl ThreadBoundCore {
             write: Some(Box::new(|p: &str, b: &[u8]| {
                 std::fs::write(p, b).map_err(|e| e.to_string())
             })),
+            displays: Some(Box::new(|| Some(1))),
             ..Default::default()
         };
 
@@ -363,6 +371,8 @@ impl ThreadBoundCore {
             saved_paths: VecDeque::new(),
             print_jobs: VecDeque::new(),
             in_save_dialog: false,
+            fullscreen: false,
+            deferred_events: Vec::new(),
         };
 
         if let Some(json_str) = initial_prefs_json.filter(|s| !s.trim().is_empty()) {
@@ -948,14 +958,60 @@ impl EngineEntry {
             let width_pt = safe_width as f32 / effective_ppp;
             let height_pt = safe_height as f32 / effective_ppp;
 
-            let mut events = Vec::with_capacity(drained.inputs.len() * 2);
+            let mut events = Vec::with_capacity(drained.inputs.len() * 2 + core.deferred_events.len());
+            events.append(&mut core.deferred_events);
+            let mut saw_pointer_release = false;
+            let mut pending_deferred_gone = false;
             for item in drained.inputs {
-                translate_queued_input(
+                let flushes_pending_gone = matches!(
                     item,
-                    zoom_factor,
-                    &mut core.applied_modifiers,
-                    &mut events,
+                    QueuedInput::PointerMoved { .. }
+                        | QueuedInput::PointerButton { .. }
+                        | QueuedInput::Touch { .. }
                 );
+                if flushes_pending_gone && pending_deferred_gone {
+                    events.push(egui::Event::PointerGone);
+                    pending_deferred_gone = false;
+                }
+                match item {
+                    QueuedInput::PointerButton { pressed: false, .. } => {
+                        saw_pointer_release = true;
+                        translate_queued_input(
+                            item,
+                            zoom_factor,
+                            &mut core.applied_modifiers,
+                            &mut events,
+                        );
+                    }
+                    QueuedInput::PointerMoved { .. }
+                    | QueuedInput::PointerButton { pressed: true, .. } => {
+                        saw_pointer_release = false;
+                        translate_queued_input(
+                            item,
+                            zoom_factor,
+                            &mut core.applied_modifiers,
+                            &mut events,
+                        );
+                    }
+                    QueuedInput::PointerGone if saw_pointer_release => {
+                        // Keep hover/pointer coordinates intact during the release pass so
+                        // `Popup::context_menu` and hover-dependent pickers work on touch, then
+                        // clear hover on the very next frame.
+                        pending_deferred_gone = true;
+                        saw_pointer_release = false;
+                    }
+                    other => {
+                        translate_queued_input(
+                            other,
+                            zoom_factor,
+                            &mut core.applied_modifiers,
+                            &mut events,
+                        );
+                    }
+                }
+            }
+            if pending_deferred_gone {
+                core.deferred_events.push(egui::Event::PointerGone);
             }
 
             let make_raw_input = |pass_events: Vec<egui::Event>, t: f64| {
@@ -987,6 +1043,13 @@ impl EngineEntry {
             // First-frame warmup: SlideApp installs custom interface fonts on pass 1 and renders UI
             // starting on pass 2 (`fonts_ready = true`). Merging `textures_delta` renders on frame 1!
             if !full_output.textures_delta.is_empty() && full_output.shapes.is_empty() {
+                if let Some(root_out) = full_output.viewport_output.get(&egui::ViewportId::ROOT) {
+                    for cmd in &root_out.commands {
+                        if let egui::ViewportCommand::Fullscreen(fs) = cmd {
+                            core.fullscreen = *fs;
+                        }
+                    }
+                }
                 let mut warmup_delta = std::mem::take(&mut full_output.textures_delta);
                 let second_out =
                     core.run_single_pass(make_raw_input(Vec::new(), time_secs + 0.001));
@@ -999,6 +1062,10 @@ impl EngineEntry {
 
             core.sync_journal_saves();
             core.drain_pending_downloads(false);
+            if core.app.doc_window.take().is_some() {
+                core.app
+                    .set_status("New Window requires a multi-window desktop host");
+            }
 
             if paint_gl
                 && let Some(painter) = core.painter.as_mut()
@@ -1104,12 +1171,21 @@ fn extract_platform_effects(
             match cmd {
                 egui::ViewportCommand::Close => close_requested = true,
                 egui::ViewportCommand::CancelClose => cancel_close = true,
+                egui::ViewportCommand::Fullscreen(fs) => core.fullscreen = *fs,
                 _ => {}
             }
         }
     }
     if cancel_close {
         close_requested = false;
+    }
+
+    let in_slideshow = core.app.show.is_some();
+    if !in_slideshow {
+        core.fullscreen = false;
+    }
+    if !core.deferred_events.is_empty() {
+        repaint_after_ms = 0;
     }
 
     let picker_request = {
@@ -1157,6 +1233,8 @@ fn extract_platform_effects(
         picker_request,
         saved_file,
         print_job,
+        fullscreen: core.fullscreen,
+        in_slideshow,
     }
 }
 
@@ -1873,6 +1951,9 @@ pub extern "system" fn Java_com_andrewnoonan_deckcraft_bridge_JniDeckCraftNative
         .unwrap_or_default();
     rust_to_jstring(&env, &json_str)
 }
+
+#[cfg(test)]
+mod regression_tests;
 
 #[cfg(test)]
 mod tests {

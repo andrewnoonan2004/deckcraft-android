@@ -54,6 +54,8 @@ object PlatformEffectsParser {
         val pickerRequest: WirePickerRequest? = null,
         val savedFile: WireSavedFileEvent? = null,
         val printJob: WirePrintJobRequest? = null,
+        val fullscreen: Boolean = false,
+        val inSlideshow: Boolean = false,
     )
 
     fun parse(rawJson: String): PlatformEffectsDto {
@@ -96,6 +98,8 @@ object PlatformEffectsParser {
                         pdfPath = it.pdfPath,
                     )
                 },
+                fullscreen = w.fullscreen,
+                inSlideshow = w.inSlideshow,
             )
         }.getOrElse {
             PlatformEffectsDto()

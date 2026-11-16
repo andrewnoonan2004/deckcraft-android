@@ -67,7 +67,7 @@ fn title(id: &str) -> &'static str {
         "customShow" => "Custom Shows",
         "chartData" => "Chart Data",
         "trim" => "Trim Media",
-        "smartart" => "Choose a SmartArt Graphic",
+        "smartart" => "Choose a Diagram Graphic",
         "bullets" => "Bullets and Numbering",
         "action" => "Action Settings",
         "quit" => "DeckCraft",
@@ -215,7 +215,7 @@ mod grid_options;
 mod hyperlink;
 mod language;
 mod paragraph;
-pub(crate) mod photo_album;
+mod photo_album;
 mod preferences;
 mod size_position;
 mod slide_size;

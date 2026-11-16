@@ -237,8 +237,8 @@ impl SlideApp {
             "app.openDialog" => self.pick_and_open(),
             "app.insertPictureDialog" => self.pick_and_insert("picture", "insert.picture"),
             "app.smartArtPictureDialog" => {
-                if !self.can_pick_open() {
-                    return Err("picking a SmartArt picture needs the desktop app".into());
+                if self.services.pick_open.is_none() {
+                    return Err("picking a Diagram picture needs the desktop app".into());
                 }
                 self.pick_and_run("picture", "smartArt.picture", p);
             }
@@ -253,9 +253,10 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open a presentation first".into());
                 }
-                if self.can_pick_open() {
+                if self.services.pick_open.is_some() {
                     self.pick_and_insert("theme", "design.browseTheme");
                 } else {
+                    // The browser's asynchronous picker would open the file as a new document.
                     self.set_status("Browse for Themes needs the desktop app for now".to_string());
                 }
             }
@@ -270,9 +271,10 @@ impl SlideApp {
                 if self.session.active().is_none() {
                     return Err("open the presentation to compare first".into());
                 }
-                if self.can_pick_open() {
+                if self.services.pick_open.is_some() {
                     self.pick_and_insert("open", "review.compare");
                 } else {
+                    // The browser's asynchronous picker would open the file as a new document.
                     self.set_status("Compare needs the desktop app for now".to_string());
                 }
             }

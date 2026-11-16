@@ -54,9 +54,7 @@ pub(super) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
         .active()
         .and_then(|d| d.doc.masters.first().map(|m| m.layouts.iter().map(|l| (l.name.clone(), l.id)).collect()))
         .unwrap_or_default();
-    let max_h = widgets::popup_max_height(ui.ctx(), 420.0);
-    egui::ScrollArea::both().max_height(max_h).show(ui, |ui| {
-        egui::Grid::new(("layouts", cmd)).spacing(vec2(6.0, 6.0)).show(ui, |ui| {
+    egui::Grid::new(("layouts", cmd)).spacing(vec2(6.0, 6.0)).show(ui, |ui| {
         for (k, (name, id)) in layouts.iter().enumerate() {
             let idx = app.session.active().and_then(|d| d.doc.masters.first().and_then(|m| m.layouts.iter().position(|l| l.id == *id)));
             let resp = ui.vertical(|ui| {
@@ -95,7 +93,6 @@ pub(super) fn layout_menu(app: &mut SlideApp, ui: &mut Ui, cmd: &str) {
                 ui.end_row();
             }
         }
-        });
     });
 }
 
@@ -107,7 +104,7 @@ fn slides_group(app: &mut SlideApp, ui: &mut Ui) {
             run(app, "slide.new", json!({}));
         }
         if let Some(a) = arrow {
-            egui::Popup::menu(&a).width(widgets::popup_max_width(ui.ctx(), 420.0)).show(|ui| new_slide_menu(app, ui));
+            egui::Popup::menu(&a).width(420.0).show(|ui| new_slide_menu(app, ui));
         }
         rows(ui, |ui| {
             let (main, arrow) = small_button_ex(ui, Icon::Layout, "Layout", enabled(app, "slide.layout"), false, true);
@@ -133,7 +130,7 @@ fn new_slide_menu(app: &mut SlideApp, ui: &mut Ui) {
     if ui.button("Slides from Outline…").clicked() {
         app.dialog = Some(crate::dialogs::Dialog::new("outline"));
     }
-    let desktop = app.can_pick_open();
+    let desktop = app.services.pick_open.is_some();
     for (label, keep) in [("Reuse Slides…", false), ("Reuse Slides (Keep Source Formatting)…", true)] {
         let r = ui.add_enabled(desktop, egui::Button::new(label));
         if r.clicked() {
@@ -200,7 +197,7 @@ fn font_group(app: &mut SlideApp, ui: &mut Ui, st: &Value) {
                 });
                 let size_text = size.map(|s| widgets::fmt_num(s, "")).unwrap_or_default();
                 dropdown(ui, "Font size", &size_text, 52.0, en, |ui| {
-                    for s in deckcraft_engine::cmd::format::SIZES.iter().chain([72.0, 80.0, 88.0, 96.0].iter()) {
+                    for s in deckcraft_engine::cmd::format::SIZES.iter() {
                         if ui.button(widgets::fmt_num(*s, "")).clicked() {
                             run(app, "format.size", json!({"size": s}));
                             ui.close();
@@ -387,7 +384,7 @@ fn paragraph_group(app: &mut SlideApp, ui: &mut Ui, st: &Value) {
                         }
                     }
                 });
-                let r = icon_toggle(ui, Icon::SmartArt, "Convert to SmartArt", enabled(app, "smartArt.fromText"), false);
+                let r = icon_toggle(ui, Icon::SmartArt, "Convert to Diagram", enabled(app, "smartArt.fromText"), false);
                 egui::Popup::menu(&r).show(|ui| smartart_gallery(app, ui, "smartArt.fromText", json!({}), "", ("", ""), None));
                 if ui.add_enabled(en, egui::Button::new("Paragraph…").min_size(vec2(88.0, 22.0))).on_hover_text("Paragraph").clicked() {
                     run(app, "format.paragraphDialog", json!({}));
@@ -412,7 +409,7 @@ fn drawing_group(app: &mut SlideApp, ui: &mut Ui) {
         let r = big_button(ui, Icon::Arrange, "Arrange", sel);
         egui::Popup::menu(&r).show(|ui| arrange_menu(app, ui));
         let r = big_button(ui, Icon::QuickStyles, "Quick\nStyles", sel);
-        egui::Popup::menu(&r).width(widgets::popup_max_width(ui.ctx(), 330.0)).show(|ui| quick_styles(app, ui));
+        egui::Popup::menu(&r).width(330.0).show(|ui| quick_styles(app, ui));
         rows(ui, |ui| {
             let sc = scheme(app);
             let (m, a) = small_button_ex(ui, Icon::ShapeFill, "Shape Fill", sel, false, true);
